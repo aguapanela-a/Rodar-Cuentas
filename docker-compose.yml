@@ -5,16 +5,17 @@ services:
     image: postgres:16
     container_name: cuentas-postgres
     environment:
-      POSTGRES_DB: cuentas
-      POSTGRES_USER: cuentas
-      POSTGRES_PASSWORD: cuentas
+      # Valores tomados de .env (raíz del repositorio). La clave es obligatoria.
+      POSTGRES_DB: ${POSTGRES_DB:-rodar_cuentas}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD en .env}
     ports:
       # Puerto del host configurable por si 5432 ya está en uso (POSTGRES_PORT=5433 docker compose up -d).
       - "${POSTGRES_PORT:-5432}:5432"
     volumes:
       - cuentas-datos:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cuentas -d cuentas"]
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
       timeout: 3s
       retries: 10

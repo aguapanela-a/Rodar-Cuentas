@@ -7,8 +7,7 @@ Administra usuarios, billeteras y movimientos (recargas y débitos idempotentes)
 - **Contrato:** `cuentas-crud.openapi.yaml`. Las rutas, los códigos HTTP, los nombres de campos y el formato de error siguen ese contrato.
 - **Moneda:** COP, montos enteros (`long`). **Fechas:** `OffsetDateTime` en UTC (ISO 8601).
 
-> **Estado:** capas `models`, `repositories`, `dto`, `services`, `controllers` y `common` implementadas. Pruebas de integración escritas, aún sin ejecutar.
-> Las migraciones `V1`/`V2` y los usuarios semilla corresponden al modelo anterior y **no coinciden** con las entidades actuales: la app no arranca hasta reescribirlas.
+> **Estado:** API completa y funcionando contra PostgreSQL. Pruebas de integración escritas, aún sin ejecutar (requieren Docker).
 
 ## Modelo de datos
 
@@ -39,7 +38,7 @@ docker compose up -d
 
 | Comando (desde la raíz) | Efecto |
 |---|---|
-| `docker compose up -d` | Crea y arranca el contenedor `cuentas-postgres` (base, usuario y clave `cuentas`) |
+| `docker compose up -d` | Crea y arranca el contenedor `cuentas-postgres` con la base, usuario y clave de `.env` |
 | `docker compose down` | Lo detiene; **los datos se conservan** en el volumen `cuentas-datos` |
 | `docker compose down -v` | Lo detiene y **borra los datos**. Al volver a arrancar, Flyway recrea todo desde cero |
 
@@ -47,7 +46,7 @@ docker compose up -d
 
 ```bash
 POSTGRES_PORT=5434 docker compose up -d
-SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5434/cuentas ./mvnw spring-boot:run
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5434/rodar_cuentas ./mvnw spring-boot:run
 ```
 
 **Migraciones** (`src/main/resources/db/migration`):
@@ -58,22 +57,23 @@ SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5434/cuentas ./mvnw spring-boo
 
 ## Variables de entorno
 
-Ver `.env.example` en la raíz. Spring Boot no lee el archivo `.env` por sí solo: exporte las variables en la terminal o configúrelas en IntelliJ (*Run Configuration → Environment variables*).
+Copie `.env.example` a `.env` en la raíz y ponga la clave real (`.env` está en `.gitignore`). La app carga `.env` automáticamente (`spring.config.import`) y `docker compose` también lo lee. Las variables de entorno del sistema tienen prioridad.
 
 | Variable | Por defecto | Uso |
 |---|---|---|
 | `PORT` | `8080` | Puerto HTTP |
 | `GATEWAY_SECRET` | *(vacío)* | Valor que debe traer la cabecera `X-Gateway-Secret` (el filtro que lo valida está pendiente de reimplementar). |
-| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/cuentas` | URL JDBC de PostgreSQL |
-| `SPRING_DATASOURCE_USERNAME` | `cuentas` | Usuario de la BD |
-| `SPRING_DATASOURCE_PASSWORD` | `cuentas` | Clave de la BD |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/rodar_cuentas` | URL JDBC de PostgreSQL |
+| `SPRING_DATASOURCE_USERNAME` | `postgres` | Usuario de la BD |
+| `SPRING_DATASOURCE_PASSWORD` | *(vacío, definir en `.env`)* | Clave de la BD |
 | `DB_POOL_MAX` | `5` | Conexiones máximas por instancia (Hikari) |
 | `POSTGRES_PORT` | `5432` | Solo para `docker compose`: puerto del host |
+| `POSTGRES_DB` / `POSTGRES_USER` / `POSTGRES_PASSWORD` | `rodar_cuentas` / `postgres` / *(obligatoria)* | Solo para `docker compose`: base, usuario y clave del contenedor |
 
 ### Azure Database for PostgreSQL
 
 ```bash
-SPRING_DATASOURCE_URL=jdbc:postgresql://<servidor>.postgres.database.azure.com:5432/cuentas?sslmode=require
+SPRING_DATASOURCE_URL=jdbc:postgresql://<servidor>.postgres.database.azure.com:5432/rodar_cuentas?sslmode=require
 SPRING_DATASOURCE_USERNAME=<usuario>
 SPRING_DATASOURCE_PASSWORD=<clave>
 DB_POOL_MAX=5
@@ -82,28 +82,26 @@ GATEWAY_SECRET=<el mismo secreto configurado en el gateway>
 
 - `?sslmode=require` es obligatorio: Azure rechaza conexiones sin TLS.
 - El servidor es compartido entre grupos, así que mantenga `DB_POOL_MAX` bajo (5 por defecto). Con *N* instancias del servicio, el total de conexiones es *N × DB_POOL_MAX*.
-- Flyway aplica las migraciones pendientes al arrancar. La base `cuentas` debe existir y el usuario necesita permiso para crear tablas.
+- Flyway aplica las migraciones pendientes al arrancar. La base `rodar_cuentas` debe existir y el usuario necesita permiso para crear tablas.
 
 ## Usuarios semilla (para el grupo Viajes y zonas)
 
-> Desactualizado: usa UUID como id; con el modelo nuevo el id es la cédula.
+Los crea la migración `V2`. Cédulas fijas, iguales en todos los entornos. El saldo mínimo para iniciar un viaje es 5000 COP.
 
-UUID fijos, iguales en todos los entornos que apliquen `V2`. El saldo mínimo para iniciar un viaje es 5000 COP.
-
-| UUID | Nombre | Saldo (COP) | Estado | ¿Puede iniciar viaje? |
+| Cédula | Nombre completo | Saldo (COP) | Estado | ¿Puede iniciar viaje? |
 |---|---|---:|---|---|
-| `11111111-0000-4000-8000-000000000001` | Ana Torres | 0 | activo | No (sin saldo, sin movimientos) |
-| `11111111-0000-4000-8000-000000000002` | Bruno Méndez | 50000 | activo | Sí |
-| `11111111-0000-4000-8000-000000000003` | Camila Rojas | 20000 | activo | Sí |
-| `11111111-0000-4000-8000-000000000004` | Diego Herrera | 5000 | activo | Sí (justo el mínimo) |
-| `11111111-0000-4000-8000-000000000005` | Elena Castro | 12500 | activo | Sí |
-| `11111111-0000-4000-8000-000000000006` | Felipe Vargas | 3000 | activo | No (saldo insuficiente) |
-| `11111111-0000-4000-8000-000000000007` | Gabriela Ortiz | 1500 | activo | No (saldo insuficiente) |
-| `11111111-0000-4000-8000-000000000008` | Hugo Salazar | 35000 | activo | Sí |
-| `11111111-0000-4000-8000-000000000009` | Isabel Moreno | 8000 | **inactivo** | No (usuario inactivo) |
-| `11111111-0000-4000-8000-000000000010` | Julián Pérez | 27000 | activo | Sí |
+| `1000000001` | Ana Torres | 0 | activo | No (sin saldo, sin movimientos) |
+| `1000000002` | Bruno Méndez | 50000 | activo | Sí |
+| `1000000003` | Camila Andrea Rojas Gómez | 20000 | activo | Sí |
+| `1000000004` | Diego Herrera | 5000 | activo | Sí (justo el mínimo) |
+| `1000000005` | Elena Castro Ruiz | 12500 | activo | Sí |
+| `1000000006` | Felipe Vargas | 3000 | activo | No (saldo insuficiente) |
+| `1000000007` | Gabriela Ortiz | 1500 | activo | No (saldo insuficiente) |
+| `1000000008` | Hugo Andrés Salazar | 35000 | activo | Sí |
+| `1000000009` | Isabel Moreno | 8000 | **inactivo** | No (usuario inactivo) |
+| `1000000010` | Julián Pérez Londoño | 27000 | activo | Sí |
 
-Cada saldo mayor que 0 tiene una recarga con referencia `seed-NN` (por ejemplo `seed-02`) y id `22222222-0000-4000-8000-0000000000NN`.
+Cada saldo mayor que 0 tiene una recarga con referencia `seed-NN` (por ejemplo `seed-02`).
 
 ## Estructura del proyecto
 
