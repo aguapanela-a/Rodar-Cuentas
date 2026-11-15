@@ -1,0 +1,31 @@
+# Maven
+target/
+
+# Java
+*.class
+hs_err_pid*
+replay_pid*
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse / Spring Tools
+.classpath
+.project
+.settings/
+.factorypath
+.springBeans
+
+# Logs
+*.log
+
+# Configuración local y secretos
+.env
+.env.*
+!.env.example
+!.env.sample
+
+# Archivos del sistema operativo
+.DS_Store
+Thumbs.db
