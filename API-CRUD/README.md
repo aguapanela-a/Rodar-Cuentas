@@ -7,7 +7,16 @@ Administra usuarios, billeteras y movimientos (recargas y débitos idempotentes)
 - **Contrato:** `cuentas-crud.openapi.yaml`. Las rutas, los códigos HTTP, los nombres de campos y el formato de error siguen ese contrato.
 - **Moneda:** COP, montos enteros (`long`). **Fechas:** `OffsetDateTime` en UTC (ISO 8601).
 
-> El código de la aplicación (controladores, servicios, entidades) está pendiente de reimplementar. Por ahora solo existen la clase principal, la configuración y las migraciones de la base de datos.
+> **Estado:** capas `models`, `repositories`, `dto`, `services`, `controllers` y `common` implementadas. Pruebas de integración escritas, aún sin ejecutar.
+> Las migraciones `V1`/`V2` y los usuarios semilla corresponden al modelo anterior y **no coinciden** con las entidades actuales: la app no arranca hasta reescribirlas.
+
+## Modelo de datos
+
+| Tabla | Clave | Columnas | Reglas |
+|---|---|---|---|
+| `usuarios` | `cedula` (texto, la elige el usuario) | `primer_nombre`, `segundo_nombre`, `primer_apellido`, `segundo_apellido`, `correo`, `estado` | Correo único (guardado en minúsculas). Segundo nombre y segundo apellido opcionales. `estado` = `ACTIVO`/`INACTIVO` (borrado lógico) |
+| `billeteras` | `billetera_id` (UUID autogenerado) | `usuario_id` → `usuarios.cedula`, `saldo` | 1 a 1: `usuario_id` único |
+| `movimientos` | `movimiento_id` (UUID autogenerado) | `usuario_id` → `usuarios.cedula`, `tipo`, `monto`, `referencia`, `creado_en` | N a 1 con usuario. `tipo` = `RECARGA`/`DEBITO`. `referencia` única |
 
 ## Inicio rápido
 
@@ -19,7 +28,6 @@ docker compose up -d
 ./mvnw spring-boot:run
 ```
 
-Al arrancar, Flyway crea las tablas (V1) y carga los 10 usuarios semilla (V2).
 
 ### Pruebas
 
@@ -78,6 +86,8 @@ GATEWAY_SECRET=<el mismo secreto configurado en el gateway>
 
 ## Usuarios semilla (para el grupo Viajes y zonas)
 
+> Desactualizado: usa UUID como id; con el modelo nuevo el id es la cédula.
+
 UUID fijos, iguales en todos los entornos que apliquen `V2`. El saldo mínimo para iniciar un viaje es 5000 COP.
 
 | UUID | Nombre | Saldo (COP) | Estado | ¿Puede iniciar viaje? |
@@ -105,7 +115,7 @@ API-CRUD/
     ├── main/
     │   ├── java/co/edu/uni/rodar/cuentas/
     │   │   ├── ApiCrudApplication.java
-    │   │   ├── common/         GlobalExceptionHandler, RecursoNoEncontradoException
+    │   │   ├── common/         GlobalExceptionHandler, RecursoNoEncontradoException (vacías)
     │   │   ├── usuarios/       controllers/ services/ repositories/ models/ dto/
     │   │   ├── billeteras/     controllers/ services/ repositories/ models/ dto/
     │   │   └── movimientos/    controllers/ services/ repositories/ models/ dto/

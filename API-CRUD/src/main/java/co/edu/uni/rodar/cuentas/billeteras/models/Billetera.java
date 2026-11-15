@@ -33,10 +33,11 @@ public class Billetera {
     @Column(name = "billetera_id", nullable = false, updatable = false)
     private UUID billeteraId;
 
-    /** Relación 1 a 1: la columna es única, así un usuario no puede tener dos billeteras. */
+    /** Relación 1 a 1 (usuario_id → usuarios.cedula): la columna es única, así un usuario no puede tener dos billeteras. */
     @OneToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "usuario_id",
+            referencedColumnName = "cedula",
             nullable = false,
             updatable = false,
             foreignKey = @ForeignKey(name = "fk_billeteras_usuario")

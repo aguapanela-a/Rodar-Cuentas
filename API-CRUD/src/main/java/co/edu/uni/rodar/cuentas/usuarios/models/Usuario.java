@@ -4,19 +4,21 @@ import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
-import jakarta.persistence.GeneratedValue;
-import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.PostLoad;
+import jakarta.persistence.PostPersist;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
+import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import org.springframework.data.domain.Persistable;
 
 import java.util.Locale;
-import java.util.UUID;
 
 @Entity
 @Table(
@@ -26,12 +28,12 @@ import java.util.UUID;
 @Getter
 @Setter
 @NoArgsConstructor
-public class Usuario {
+public class Usuario implements Persistable<String> {
 
+    /** Cédula del usuario: la elige el usuario (no se autogenera) y es la clave primaria. */
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
-    @Column(name = "usuario_id", nullable = false, updatable = false)
-    private UUID usuarioId;
+    @Column(name = "cedula", nullable = false, updatable = false, length = 20)
+    private String cedula;
 
     @Column(name = "primer_nombre", nullable = false, length = 50)
     private String primerNombre;
@@ -52,6 +54,33 @@ public class Usuario {
     @Enumerated(EnumType.STRING)
     @Column(name = "estado", nullable = false, length = 10)
     private EstadoUsuario estado = EstadoUsuario.ACTIVO;
+
+    /**
+     * Como la cédula no es autogenerada, Spring Data no puede saber si el usuario es nuevo
+     * mirando si el id es null. Sin esta bandera, save() de un usuario nuevo con una cédula
+     * que ya existe sobrescribiría al usuario existente en vez de fallar por clave duplicada.
+     */
+    @Transient
+    @Getter(AccessLevel.NONE)
+    @Setter(AccessLevel.NONE)
+    private boolean nuevo = true;
+
+    @Override
+    public String getId() {
+        return cedula;
+    }
+
+    @Override
+    public boolean isNew() {
+        return nuevo;
+    }
+
+    /** Un usuario leído de la BD o ya guardado deja de ser nuevo: el próximo save() es un UPDATE. */
+    @PostLoad
+    @PostPersist
+    private void marcarComoExistente() {
+        nuevo = false;
+    }
 
     /**
      * El correo se guarda siempre en minúsculas y sin espacios, así la restricción única

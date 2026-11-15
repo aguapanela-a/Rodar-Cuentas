@@ -37,10 +37,11 @@ public class Movimiento {
     @Column(name = "movimiento_id", nullable = false, updatable = false)
     private UUID movimientoId;
 
-    /** Relación N a 1: un usuario tiene muchos movimientos, cada movimiento es de un solo usuario. */
+    /** Relación N a 1 (usuario_id → usuarios.cedula): un usuario tiene muchos movimientos, cada movimiento es de un solo usuario. */
     @ManyToOne(fetch = FetchType.LAZY, optional = false)
     @JoinColumn(
             name = "usuario_id",
+            referencedColumnName = "cedula",
             nullable = false,
             updatable = false,
             foreignKey = @ForeignKey(name = "fk_movimientos_usuario")

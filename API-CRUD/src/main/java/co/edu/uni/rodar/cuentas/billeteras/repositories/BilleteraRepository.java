@@ -15,10 +15,10 @@ import java.util.UUID;
 public interface BilleteraRepository extends JpaRepository<Billetera, UUID> {
 
     /** Billetera del usuario (relación 1 a 1), solo para lectura. */
-    Optional<Billetera> findByUsuario_UsuarioId(UUID usuarioId);
+    Optional<Billetera> findByUsuario_Cedula(String cedula);
 
     /** Para no crear una segunda billetera al mismo usuario. */
-    boolean existsByUsuario_UsuarioId(UUID usuarioId);
+    boolean existsByUsuario_Cedula(String cedula);
 
     /**
      * Billetera del usuario bloqueada para modificar el saldo.
@@ -27,6 +27,6 @@ public interface BilleteraRepository extends JpaRepository<Billetera, UUID> {
      * Debe llamarse dentro de una transacción (@Transactional en el servicio).
      */
     @Lock(LockModeType.PESSIMISTIC_WRITE)
-    @Query("select b from Billetera b where b.usuario.usuarioId = :usuarioId")
-    Optional<Billetera> findByUsuarioIdForUpdate(@Param("usuarioId") UUID usuarioId);
+    @Query("select b from Billetera b where b.usuario.cedula = :cedula")
+    Optional<Billetera> findByCedulaForUpdate(@Param("cedula") String cedula);
 }

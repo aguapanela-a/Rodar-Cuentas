@@ -14,11 +14,11 @@ import java.util.UUID;
 public interface MovimientoRepository extends JpaRepository<Movimiento, UUID> {
 
     /** Historial de un usuario, del más reciente al más antiguo. */
-    Page<Movimiento> findByUsuario_UsuarioIdOrderByCreadoEnDesc(UUID usuarioId, Pageable pageable);
+    Page<Movimiento> findByUsuario_CedulaOrderByCreadoEnDesc(String cedula, Pageable pageable);
 
     /** Historial de un usuario filtrado por tipo (solo recargas o solo débitos). */
-    Page<Movimiento> findByUsuario_UsuarioIdAndTipoOrderByCreadoEnDesc(UUID usuarioId, TipoMovimiento tipo,
-                                                                       Pageable pageable);
+    Page<Movimiento> findByUsuario_CedulaAndTipoOrderByCreadoEnDesc(String cedula, TipoMovimiento tipo,
+                                                                  Pageable pageable);
 
     /** La referencia es única: permite detectar un movimiento repetido y devolver el ya registrado. */
     Optional<Movimiento> findByReferencia(String referencia);

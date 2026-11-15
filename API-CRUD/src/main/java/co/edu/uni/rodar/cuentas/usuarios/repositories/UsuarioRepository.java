@@ -8,16 +8,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;
 
 import java.util.Optional;
-import java.util.UUID;
 
 @Repository
-public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
+public interface UsuarioRepository extends JpaRepository<Usuario, String> {
 
     /**
      * Busca un usuario solo si está en el estado indicado.
      * Con ACTIVO sirve para ignorar a los usuarios borrados lógicamente.
      */
-    Optional<Usuario> findByUsuarioIdAndEstado(UUID usuarioId, EstadoUsuario estado);
+    Optional<Usuario> findByCedulaAndEstado(String cedula, EstadoUsuario estado);
 
     /** Lista paginada de usuarios por estado (p. ej. solo los ACTIVO). */
     Page<Usuario> findAllByEstado(EstadoUsuario estado, Pageable pageable);
@@ -32,5 +31,5 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
     boolean existsByCorreo(String correo);
 
     /** Para validar el correo único al actualizar: ignora al propio usuario. */
-    boolean existsByCorreoAndUsuarioIdNot(String correo, UUID usuarioId);
+    boolean existsByCorreoAndCedulaNot(String correo, String cedula);
 }

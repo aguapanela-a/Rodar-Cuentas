@@ -1,0 +1,722 @@
+openapi: 3.0.3
+info:
+  title: Cuentas - API CRUD de usuarios, billeteras y movimientos
+  version: 2.0.0
+  license:
+    name: Uso académico - Electiva de Desarrollo Web Backend
+    url: https://example.com/licencia
+  description: |
+    API CRUD del grupo **Cuentas** del clúster **Rodar**. Administra usuarios, su billetera
+    y los movimientos de la billetera (recargas y débitos).
+
+    **Identificador del usuario:** la **cédula**. La elige el usuario al registrarse, no se
+    autogenera y no se puede cambiar.
+
+    **Acceso:** las rutas se consumen a través del API Gateway del clúster, con un JWT obtenido
+    por Client Credentials. El gateway valida el token y el alcance; las respuestas 401 y 403
+    las genera el gateway, no este servicio.
+
+    **Moneda:** todos los montos son enteros en pesos colombianos (COP), sin decimales.
+
+    **Fechas:** ISO 8601 en UTC.
+
+    **Enums:** el servicio los responde en minúsculas (`activo`, `recarga`); en la entrada
+    acepta minúsculas o mayúsculas.
+
+    **Cuerpos JSON:** no se admiten campos adicionales a los documentados (responde 400).
+
+    **Errores:** todas las respuestas de error siguen el formato
+    `{ "codigo": "...", "mensaje": "...", "detalle": {} }`.
+servers:
+  - url: https://{gateway}/cuentas
+    description: Gateway del clúster Rodar (prefijo de Cuentas)
+    variables:
+      gateway:
+        default: rodar-gateway.example.com
+        description: Dominio del gateway (reemplazar por el real)
+  - url: http://localhost:8080
+    description: Desarrollo local (sin gateway)
+tags:
+  - name: Usuarios
+    description: Gestión de usuarios (borrado lógico)
+  - name: Billetera
+    description: Consulta del saldo
+  - name: Movimientos
+    description: Recargas y débitos idempotentes
+  - name: Salud
+    description: Verificación de salud para la prueba de humo
+security:
+  - gatewayOAuth: []
+
+paths:
+  /health:
+    get:
+      tags: [Salud]
+      operationId: salud
+      summary: Verificación de salud (prueba de humo)
+      security: []
+      responses:
+        '200':
+          description: El servicio está arriba
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Salud'
+
+  /usuarios:
+    get:
+      tags: [Usuarios]
+      operationId: listarUsuarios
+      summary: Lista usuarios con filtros opcionales y paginación
+      description: Ordenados por cédula. Sin filtros incluye usuarios activos e inactivos.
+      security:
+        - gatewayOAuth: ['usuarios:leer']
+      parameters:
+        - name: estado
+          in: query
+          schema:
+            $ref: '#/components/schemas/EstadoUsuario'
+        - name: correo
+          in: query
+          description: Filtro exacto por correo (sin distinguir mayúsculas)
+          schema:
+            type: string
+            format: email
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamano'
+      responses:
+        '200':
+          description: Página de usuarios
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginaUsuarios'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+    post:
+      tags: [Usuarios]
+      operationId: crearUsuario
+      summary: Crea un usuario activo y su billetera con saldo cero
+      description: El usuario y su billetera se crean en la misma transacción.
+      security:
+        - gatewayOAuth: ['usuarios:escribir']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioEntrada'
+            example:
+              cedula: '1032456789'
+              primerNombre: Nicolas
+              primerApellido: Castro
+              correo: nicolas@example.com
+      responses:
+        '201':
+          description: Usuario creado
+          headers:
+            Location:
+              description: URL del usuario creado (`/usuarios/{cedula}`)
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '409':
+          description: La cédula (`cedula_duplicada`) o el correo (`correo_duplicado`) ya están registrados
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                cedulaDuplicada:
+                  value:
+                    codigo: cedula_duplicada
+                    mensaje: Ya existe un usuario con esa cédula
+                    detalle:
+                      cedula: '1032456789'
+                correoDuplicado:
+                  value:
+                    codigo: correo_duplicado
+                    mensaje: Ya existe un usuario con ese correo
+                    detalle:
+                      correo: nicolas@example.com
+
+  /usuarios/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Cedula'
+    get:
+      tags: [Usuarios]
+      operationId: obtenerUsuario
+      summary: Detalle de un usuario (también si está inactivo)
+      security:
+        - gatewayOAuth: ['usuarios:leer']
+      responses:
+        '200':
+          description: Usuario encontrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+    put:
+      tags: [Usuarios]
+      operationId: actualizarUsuario
+      summary: Actualiza nombres, apellidos y correo
+      description: No cambia la cédula ni el estado (el estado se cambia con PATCH).
+      security:
+        - gatewayOAuth: ['usuarios:escribir']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UsuarioActualizacion'
+      responses:
+        '200':
+          description: Usuario actualizado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Usuario'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+        '409':
+          description: El nuevo correo ya pertenece a otro usuario (`correo_duplicado`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    delete:
+      tags: [Usuarios]
+      operationId: desactivarUsuario
+      summary: Desactiva un usuario (borrado lógico, estado `inactivo`)
+      description: Si ya estaba inactivo responde igual (204).
+      security:
+        - gatewayOAuth: ['usuarios:escribir']
+      responses:
+        '204':
+          description: Usuario desactivado
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+    patch:
+      tags: [Usuarios]
+      operationId: cambiarEstadoUsuario
+      summary: Cambia el estado del usuario (activo o inactivo)
+      description: |
+        Activa o desactiva al usuario y retorna el estado resultante.
+        Si el usuario ya tiene ese estado responde 200 sin cambios.
+      security:
+        - gatewayOAuth: ['usuarios:escribir']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioEstadoUsuario'
+      responses:
+        '200':
+          description: Estado resultante del usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CambioEstadoUsuario'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+
+  /usuarios/{id}/billetera:
+    parameters:
+      - $ref: '#/components/parameters/Cedula'
+    get:
+      tags: [Billetera]
+      operationId: obtenerBilletera
+      summary: Saldo actual del usuario (también si está inactivo)
+      security:
+        - gatewayOAuth: ['usuarios:leer']
+      responses:
+        '200':
+          description: Billetera del usuario
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Billetera'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+
+  /usuarios/{usuarioId}/movimientos:
+    parameters:
+      - $ref: '#/components/parameters/CedulaMovimientos'
+    get:
+      tags: [Movimientos]
+      operationId: listarMovimientos
+      summary: Historial paginado de movimientos (más reciente primero)
+      description: Funciona aunque el usuario esté inactivo.
+      security:
+        - gatewayOAuth: ['usuarios:leer']
+      parameters:
+        - name: tipo
+          in: query
+          schema:
+            $ref: '#/components/schemas/TipoMovimiento'
+        - $ref: '#/components/parameters/Pagina'
+        - $ref: '#/components/parameters/Tamano'
+      responses:
+        '200':
+          description: Página del historial
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HistorialMovimientos'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+    post:
+      tags: [Movimientos]
+      operationId: registrarMovimiento
+      summary: Registra una recarga o un débito (idempotente por `referencia`)
+      description: |
+        Se valida en este orden, todo dentro de una transacción:
+        1. El usuario no existe → 404 `usuario_no_encontrado`.
+        2. El usuario está inactivo → 409 `usuario_inactivo`; no se registra nada.
+        3. El monto no es mayor que cero → 400 `solicitud_invalida` (C-HU1).
+        4. **Idempotencia (C-HU3):** `referencia` es única. Si ya existe un movimiento con esa
+           referencia, el mismo usuario, tipo y monto, se devuelve el original con **200**
+           sin registrar otro ni tocar el saldo. Si la referencia existe con otro usuario,
+           tipo o monto → 409 `referencia_en_conflicto`.
+        5. Un débito mayor al saldo → 409 `saldo_insuficiente`; el saldo no cambia y no se
+           registra el movimiento (C-HU2).
+        6. Una **recarga** suma al saldo; un **débito** resta. Responde 201.
+
+        La fila de la billetera se bloquea (`SELECT ... FOR UPDATE`) mientras se modifica el
+        saldo, así dos movimientos simultáneos no pueden dejarlo inconsistente.
+      security:
+        - gatewayOAuth: ['billetera:escribir']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/MovimientoEntrada'
+            examples:
+              recarga:
+                summary: Recarga
+                value:
+                  tipo: recarga
+                  monto: 20000
+                  referencia: recarga-7f3c1a
+              debito:
+                summary: Débito
+                value:
+                  tipo: debito
+                  monto: 6240
+                  referencia: via-0042
+      responses:
+        '201':
+          description: Movimiento registrado
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movimiento'
+        '200':
+          description: Ya existía un movimiento con esa referencia y los mismos datos; se devuelve el original
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Movimiento'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+        '409':
+          description: Saldo insuficiente, usuario inactivo o referencia en conflicto
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              examples:
+                saldoInsuficiente:
+                  value:
+                    codigo: saldo_insuficiente
+                    mensaje: El saldo no alcanza para el débito
+                    detalle:
+                      saldo: 3000
+                      monto: 6240
+                usuarioInactivo:
+                  value:
+                    codigo: usuario_inactivo
+                    mensaje: El usuario está desactivado
+                    detalle: {}
+                referenciaEnConflicto:
+                  value:
+                    codigo: referencia_en_conflicto
+                    mensaje: La referencia ya se usó con datos distintos
+                    detalle:
+                      referencia: via-0042
+
+components:
+  securitySchemes:
+    gatewayOAuth:
+      type: oauth2
+      description: |
+        JWT emitido por el gateway del clúster con Client Credentials. El gateway valida
+        firma, vencimiento y alcance antes de reenviar la petición a este servicio.
+      flows:
+        clientCredentials:
+          tokenUrl: https://rodar-gateway.example.com/token
+          scopes:
+            usuarios:leer: Consultar usuarios, saldo y movimientos
+            usuarios:escribir: Crear, actualizar, activar y desactivar usuarios
+            billetera:escribir: Registrar recargas y débitos
+
+  parameters:
+    Cedula:
+      name: id
+      in: path
+      required: true
+      description: Cédula del usuario
+      schema:
+        type: string
+        example: '1032456789'
+    CedulaMovimientos:
+      name: usuarioId
+      in: path
+      required: true
+      description: Cédula del usuario
+      schema:
+        type: string
+        example: '1032456789'
+    Pagina:
+      name: pagina
+      in: query
+      description: Número de página, desde 1
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    Tamano:
+      name: tamano
+      in: query
+      description: Elementos por página
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+
+  responses:
+    SolicitudInvalida:
+      description: |
+        Datos de entrada inválidos (`solicitud_invalida`): campo obligatorio faltante, formato
+        incorrecto, valor de enum desconocido, JSON mal formado o con campos no permitidos.
+        `detalle.campo` es el primer campo con error; `detalle.errores` los lista todos
+        (solo en errores de validación de campos).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: solicitud_invalida
+            mensaje: El primer apellido es obligatorio
+            detalle:
+              campo: primerApellido
+              errores:
+                primerApellido: El primer apellido es obligatorio
+    NoAutenticado:
+      description: Token ausente, inválido o vencido. Lo responde el gateway.
+    SinPermiso:
+      description: El token no tiene el alcance requerido. Lo responde el gateway.
+    UsuarioNoEncontrado:
+      description: No existe un usuario con esa cédula (`usuario_no_encontrado`)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            codigo: usuario_no_encontrado
+            mensaje: No existe un usuario con ese id
+            detalle:
+              id: '1032456789'
+
+  schemas:
+    Error:
+      type: object
+      required: [codigo, mensaje, detalle]
+      description: |
+        Códigos posibles: `solicitud_invalida` (400), `usuario_no_encontrado` (404),
+        `recurso_no_encontrado` (404, ruta inexistente), `metodo_no_permitido` (405),
+        `tipo_contenido_no_soportado` (415), `cedula_duplicada`, `correo_duplicado`,
+        `usuario_inactivo`, `saldo_insuficiente`, `referencia_en_conflicto`,
+        `billetera_duplicada`, `conflicto` (409), `error_interno` (500).
+      properties:
+        codigo:
+          type: string
+          description: Código estable en snake_case
+          example: saldo_insuficiente
+        mensaje:
+          type: string
+          description: Mensaje legible para personas
+        detalle:
+          type: object
+          additionalProperties: true
+          description: Información adicional del error (puede ser un objeto vacío)
+
+    Salud:
+      type: object
+      required: [estado, servicio]
+      properties:
+        estado:
+          type: string
+          enum: [ok]
+        servicio:
+          type: string
+          example: cuentas-crud
+
+    EstadoUsuario:
+      type: string
+      enum: [activo, inactivo]
+
+    UsuarioEntrada:
+      type: object
+      required: [cedula, primerNombre, primerApellido, correo]
+      additionalProperties: false
+      properties:
+        cedula:
+          type: string
+          pattern: '^\d{1,20}$'
+          description: Solo dígitos, máximo 20. Es el id del usuario y no se puede cambiar.
+          example: '1032456789'
+        primerNombre:
+          type: string
+          maxLength: 50
+          example: Nicolas
+        segundoNombre:
+          type: string
+          maxLength: 50
+          description: Opcional
+        primerApellido:
+          type: string
+          maxLength: 50
+          example: Castro
+        segundoApellido:
+          type: string
+          maxLength: 50
+          description: Opcional
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+          description: Único. Se guarda en minúsculas.
+          example: nicolas@example.com
+
+    UsuarioActualizacion:
+      type: object
+      required: [primerNombre, primerApellido, correo]
+      additionalProperties: false
+      properties:
+        primerNombre:
+          type: string
+          maxLength: 50
+        segundoNombre:
+          type: string
+          maxLength: 50
+          description: Opcional. Si no se envía, queda vacío.
+        primerApellido:
+          type: string
+          maxLength: 50
+        segundoApellido:
+          type: string
+          maxLength: 50
+          description: Opcional. Si no se envía, queda vacío.
+        correo:
+          type: string
+          format: email
+          maxLength: 254
+
+    CambioEstadoUsuario:
+      type: object
+      required: [estado]
+      additionalProperties: false
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoUsuario'
+
+    Usuario:
+      type: object
+      required: [cedula, nombreCompleto, correo, estado]
+      properties:
+        cedula:
+          type: string
+          example: '1032456789'
+        nombreCompleto:
+          type: string
+          description: Nombres y apellidos presentes separados por un espacio
+          example: Nicolas Castro
+        correo:
+          type: string
+          format: email
+          example: nicolas@example.com
+        estado:
+          $ref: '#/components/schemas/EstadoUsuario'
+
+    Billetera:
+      type: object
+      required: [cedula, saldo, moneda]
+      properties:
+        cedula:
+          type: string
+          example: '1032456789'
+        saldo:
+          type: integer
+          format: int64
+          minimum: 0
+          description: Saldo disponible en COP
+          example: 15000
+        moneda:
+          type: string
+          enum: [COP]
+
+    TipoMovimiento:
+      type: string
+      enum: [recarga, debito]
+
+    MovimientoEntrada:
+      type: object
+      required: [tipo, monto, referencia]
+      additionalProperties: false
+      properties:
+        tipo:
+          $ref: '#/components/schemas/TipoMovimiento'
+        monto:
+          type: integer
+          format: int64
+          minimum: 1
+          description: Monto en COP, mayor que cero
+        referencia:
+          type: string
+          minLength: 1
+          maxLength: 100
+          description: Clave única de idempotencia
+        descripcion:
+          type: string
+          maxLength: 255
+          description: Se acepta por compatibilidad pero **no se guarda** ni se devuelve.
+
+    Movimiento:
+      type: object
+      required: [id, cedula, tipo, monto, referencia, creadoEn]
+      properties:
+        id:
+          type: string
+          format: uuid
+        cedula:
+          type: string
+          example: '1032456789'
+        tipo:
+          $ref: '#/components/schemas/TipoMovimiento'
+        monto:
+          type: integer
+          format: int64
+        referencia:
+          type: string
+        creadoEn:
+          type: string
+          format: date-time
+
+    MovimientoHistorial:
+      type: object
+      required: [monto, tipo, referencia, creadoEn]
+      properties:
+        monto:
+          type: integer
+          format: int64
+        tipo:
+          $ref: '#/components/schemas/TipoMovimiento'
+        referencia:
+          type: string
+        creadoEn:
+          type: string
+          format: date-time
+
+    MetaPaginacion:
+      type: object
+      required: [pagina, tamano, total]
+      properties:
+        pagina:
+          type: integer
+        tamano:
+          type: integer
+        total:
+          type: integer
+          format: int64
+          description: Total de elementos que cumplen los filtros
+
+    PaginaUsuarios:
+      allOf:
+        - $ref: '#/components/schemas/MetaPaginacion'
+        - type: object
+          required: [datos]
+          properties:
+            datos:
+              type: array
+              items:
+                $ref: '#/components/schemas/Usuario'
+
+    HistorialMovimientos:
+      allOf:
+        - $ref: '#/components/schemas/MetaPaginacion'
+        - type: object
+          required: [cedula, datos]
+          properties:
+            cedula:
+              type: string
+              description: Cédula del usuario (una sola vez para todo el historial)
+              example: '1032456789'
+            datos:
+              type: array
+              items:
+                $ref: '#/components/schemas/MovimientoHistorial'
