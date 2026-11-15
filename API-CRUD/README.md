@@ -3,13 +3,97 @@
 Microservicio del grupo **Cuentas** de la plataforma **Rodar** (scooters y bicicletas compartidas).
 Administra usuarios, billeteras y movimientos (recargas y débitos idempotentes).
 
-- **Tecnología:** Java 21 + Spring Boot 4 (Maven)
-- **Arquitectura:** hexagonal (puertos y adaptadores)
+- **Tecnología:** Java 21 + Spring Boot 4 (Maven), PostgreSQL 16, Flyway
 - **Contrato:** `cuentas-crud.openapi.yaml`. Las rutas, los códigos HTTP, los nombres de campos y el formato de error siguen ese contrato.
 - **Moneda:** COP, montos enteros (`long`). **Fechas:** `OffsetDateTime` en UTC (ISO 8601).
 
-> **Estado actual:** la persistencia es **en memoria** (perfil `memoria`). PostgreSQL se implementa en otra rama.
-> Los registros de liquidación (`/registros-liquidacion`) y el campo `deudaPendiente` del contrato aún no están implementados.
+> El código de la aplicación (controladores, servicios, entidades) está pendiente de reimplementar. Por ahora solo existen la clase principal, la configuración y las migraciones de la base de datos.
+
+## Inicio rápido
+
+```bash
+# 1. Levantar PostgreSQL 16 (desde la raíz del repositorio)
+docker compose up -d
+
+# 2. Arrancar el servicio contra PostgreSQL (desde API-CRUD/)
+./mvnw spring-boot:run
+```
+
+Al arrancar, Flyway crea las tablas (V1) y carga los 10 usuarios semilla (V2).
+
+### Pruebas
+
+```bash
+./mvnw test     # requiere Docker en ejecución (Testcontainers levanta un postgres:16 temporal)
+```
+
+## Base de datos
+
+| Comando (desde la raíz) | Efecto |
+|---|---|
+| `docker compose up -d` | Crea y arranca el contenedor `cuentas-postgres` (base, usuario y clave `cuentas`) |
+| `docker compose down` | Lo detiene; **los datos se conservan** en el volumen `cuentas-datos` |
+| `docker compose down -v` | Lo detiene y **borra los datos**. Al volver a arrancar, Flyway recrea todo desde cero |
+
+**Si el puerto 5432 ya está ocupado** (otro PostgreSQL local u otro contenedor), use otro puerto del host y apunte la URL a él:
+
+```bash
+POSTGRES_PORT=5434 docker compose up -d
+SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5434/cuentas ./mvnw spring-boot:run
+```
+
+**Migraciones** (`src/main/resources/db/migration`):
+
+- `V1__crear_tablas.sql`: tablas `usuarios`, `billeteras` y `movimientos`, con sus restricciones e índices.
+- `V2__datos_semilla.sql`: los 10 usuarios de la tabla de abajo.
+- **Nunca edite una migración ya aplicada** (Flyway detecta el cambio por checksum y la app no arranca). Los cambios futuros van en `V3__...sql`, `V4__...sql`, etc.
+
+## Variables de entorno
+
+Ver `.env.example` en la raíz. Spring Boot no lee el archivo `.env` por sí solo: exporte las variables en la terminal o configúrelas en IntelliJ (*Run Configuration → Environment variables*).
+
+| Variable | Por defecto | Uso |
+|---|---|---|
+| `PORT` | `8080` | Puerto HTTP |
+| `GATEWAY_SECRET` | *(vacío)* | Valor que debe traer la cabecera `X-Gateway-Secret` (el filtro que lo valida está pendiente de reimplementar). |
+| `SPRING_DATASOURCE_URL` | `jdbc:postgresql://localhost:5432/cuentas` | URL JDBC de PostgreSQL |
+| `SPRING_DATASOURCE_USERNAME` | `cuentas` | Usuario de la BD |
+| `SPRING_DATASOURCE_PASSWORD` | `cuentas` | Clave de la BD |
+| `DB_POOL_MAX` | `5` | Conexiones máximas por instancia (Hikari) |
+| `POSTGRES_PORT` | `5432` | Solo para `docker compose`: puerto del host |
+
+### Azure Database for PostgreSQL
+
+```bash
+SPRING_DATASOURCE_URL=jdbc:postgresql://<servidor>.postgres.database.azure.com:5432/cuentas?sslmode=require
+SPRING_DATASOURCE_USERNAME=<usuario>
+SPRING_DATASOURCE_PASSWORD=<clave>
+DB_POOL_MAX=5
+GATEWAY_SECRET=<el mismo secreto configurado en el gateway>
+```
+
+- `?sslmode=require` es obligatorio: Azure rechaza conexiones sin TLS.
+- El servidor es compartido entre grupos, así que mantenga `DB_POOL_MAX` bajo (5 por defecto). Con *N* instancias del servicio, el total de conexiones es *N × DB_POOL_MAX*.
+- Flyway aplica las migraciones pendientes al arrancar. La base `cuentas` debe existir y el usuario necesita permiso para crear tablas.
+
+## Usuarios semilla (para el grupo Viajes y zonas)
+
+UUID fijos, iguales en todos los entornos que apliquen `V2`. El saldo mínimo para iniciar un viaje es 5000 COP.
+
+| UUID | Nombre | Saldo (COP) | Estado | ¿Puede iniciar viaje? |
+|---|---|---:|---|---|
+| `11111111-0000-4000-8000-000000000001` | Ana Torres | 0 | activo | No (sin saldo, sin movimientos) |
+| `11111111-0000-4000-8000-000000000002` | Bruno Méndez | 50000 | activo | Sí |
+| `11111111-0000-4000-8000-000000000003` | Camila Rojas | 20000 | activo | Sí |
+| `11111111-0000-4000-8000-000000000004` | Diego Herrera | 5000 | activo | Sí (justo el mínimo) |
+| `11111111-0000-4000-8000-000000000005` | Elena Castro | 12500 | activo | Sí |
+| `11111111-0000-4000-8000-000000000006` | Felipe Vargas | 3000 | activo | No (saldo insuficiente) |
+| `11111111-0000-4000-8000-000000000007` | Gabriela Ortiz | 1500 | activo | No (saldo insuficiente) |
+| `11111111-0000-4000-8000-000000000008` | Hugo Salazar | 35000 | activo | Sí |
+| `11111111-0000-4000-8000-000000000009` | Isabel Moreno | 8000 | **inactivo** | No (usuario inactivo) |
+| `11111111-0000-4000-8000-000000000010` | Julián Pérez | 27000 | activo | Sí |
+
+Cada saldo mayor que 0 tiene una recarga con referencia `seed-NN` (por ejemplo `seed-02`) y id `22222222-0000-4000-8000-0000000000NN`.
 
 ## Estructura del proyecto
 
@@ -21,180 +105,15 @@ API-CRUD/
     ├── main/
     │   ├── java/co/edu/uni/rodar/cuentas/
     │   │   ├── ApiCrudApplication.java
-    │   │   ├── dominio/                                  ← Java puro, no depende de nadie
-    │   │   │   ├── excepciones/
-    │   │   │   │   ├── DominioException.java             (base: codigo + detalle)
-    │   │   │   │   ├── DatosInvalidosException.java
-    │   │   │   │   ├── UsuarioNoEncontradoException.java
-    │   │   │   │   ├── CorreoDuplicadoException.java
-    │   │   │   │   ├── UsuarioInactivoException.java
-    │   │   │   │   ├── SaldoInsuficienteException.java
-    │   │   │   │   └── ReferenciaEnConflictoException.java
-    │   │   │   └── modelos/
-    │   │   │       ├── Usuario.java
-    │   │   │       ├── Billetera.java
-    │   │   │       ├── Movimiento.java
-    │   │   │       ├── EstadoUsuario.java
-    │   │   │       ├── TipoMovimiento.java
-    │   │   │       ├── Paginacion.java
-    │   │   │       ├── Pagina.java
-    │   │   │       ├── FiltroUsuarios.java
-    │   │   │       └── FiltroMovimientos.java
-    │   │   ├── aplicacion/                               ← Java puro, depende solo del dominio
-    │   │   │   ├── puertos/
-    │   │   │   │   ├── entrada/
-    │   │   │   │   │   ├── GestionarUsuarioUseCase.java
-    │   │   │   │   │   ├── ObtenerSaldoUseCase.java
-    │   │   │   │   │   ├── RegistrarMovimientoUseCase.java
-    │   │   │   │   │   ├── ConsultarMovimientosUseCase.java
-    │   │   │   │   │   ├── CrearUsuarioComando.java
-    │   │   │   │   │   ├── ActualizarUsuarioComando.java
-    │   │   │   │   │   ├── RegistrarMovimientoComando.java
-    │   │   │   │   │   └── ResultadoMovimiento.java
-    │   │   │   │   └── salida/
-    │   │   │   │       ├── UsuarioRepositorio.java
-    │   │   │   │       ├── BilleteraRepositorio.java
-    │   │   │   │       ├── MovimientoRepositorio.java
-    │   │   │   │       └── UnidadDeTrabajo.java
-    │   │   │   └── servicios/
-    │   │   │       ├── GestionarUsuarioService.java
-    │   │   │       ├── ObtenerSaldoService.java
-    │   │   │       ├── RegistrarMovimientoService.java
-    │   │   │       └── ConsultarMovimientosService.java
-    │   │   └── infraestructura/                          ← único lugar con Spring / Jakarta
-    │   │       ├── adaptadores/
-    │   │       │   ├── entrada/rest/
-    │   │       │   │   ├── UsuarioController.java
-    │   │       │   │   ├── BilleteraController.java
-    │   │       │   │   ├── MovimientoController.java
-    │   │       │   │   ├── HealthController.java
-    │   │       │   │   ├── ManejadorErrores.java
-    │   │       │   │   └── dto/
-    │   │       │   │       ├── CrearUsuarioRequest.java
-    │   │       │   │       ├── ActualizarUsuarioRequest.java
-    │   │       │   │       ├── RegistrarMovimientoRequest.java
-    │   │       │   │       ├── UsuarioResponse.java
-    │   │       │   │       ├── BilleteraResponse.java
-    │   │       │   │       ├── MovimientoResponse.java
-    │   │       │   │       ├── PaginaResponse.java
-    │   │       │   │       ├── ErrorResponse.java
-    │   │       │   │       ├── SaludResponse.java
-    │   │       │   │       └── DtoMapper.java
-    │   │       │   └── salida/
-    │   │       │       ├── memoria/                      (TEMPORAL, perfil "memoria")
-    │   │       │       │   ├── UsuarioMemoriaAdapter.java
-    │   │       │       │   ├── BilleteraMemoriaAdapter.java
-    │   │       │       │   ├── MovimientoMemoriaAdapter.java
-    │   │       │       │   ├── UnidadDeTrabajoMemoria.java
-    │   │       │       │   └── DatosSemillaMemoria.java
-    │   │       │       └── persistencia/                 (stubs para la rama de BD)
-    │   │       │           ├── UsuarioPersistenceAdapter.java
-    │   │       │           ├── BilleteraPersistenceAdapter.java
-    │   │       │           └── MovimientoPersistenceAdapter.java
-    │   │       └── configuracion/
-    │   │           ├── BeansConfig.java
-    │   │           └── FiltroCabeceraGateway.java
+    │   │   ├── common/         GlobalExceptionHandler, RecursoNoEncontradoException
+    │   │   ├── usuarios/       controllers/ services/ repositories/ models/ dto/
+    │   │   ├── billeteras/     controllers/ services/ repositories/ models/ dto/
+    │   │   └── movimientos/    controllers/ services/ repositories/ models/ dto/
     │   └── resources/
     │       ├── application.properties
-    │       └── application-memoria.properties
+    │       └── db/migration/
+    │           ├── V1__crear_tablas.sql
+    │           └── V2__datos_semilla.sql
     └── test/java/co/edu/uni/rodar/cuentas/
-        ├── ApiCrudApplicationTests.java                  (contexto Spring, perfil memoria)
-        ├── ArquitecturaTest.java                         (ArchUnit: reglas de dependencia)
-        ├── dominio/
-        │   ├── BilleteraTest.java
-        │   └── UsuarioTest.java
-        └── aplicacion/
-            ├── EntornoEnMemoria.java
-            ├── GestionarUsuarioServiceTest.java
-            └── RegistrarMovimientoServiceTest.java
-```
-
-## Descripción de las capas
-
-| Carpeta | Capa | Contenido |
-|---|---|---|
-| `dominio/modelos` | Dominio | Entidades con sus reglas (`Usuario`, `Billetera`, `Movimiento`), enums y objetos de consulta (`Paginacion`, `Pagina`, filtros) |
-| `dominio/excepciones` | Dominio | Errores de negocio con código estable (`saldo_insuficiente`, `correo_duplicado`...) |
-| `aplicacion/puertos/entrada` | Aplicación | Casos de uso que ofrece el servicio (`*UseCase`) y sus comandos/resultados (records) |
-| `aplicacion/puertos/salida` | Aplicación | Lo que el núcleo necesita del exterior: un repositorio por entidad y `UnidadDeTrabajo` (atomicidad) |
-| `aplicacion/servicios` | Aplicación | Implementación de los casos de uso; orquestan dominio y puertos |
-| `infraestructura/adaptadores/entrada/rest` | Infraestructura | Controladores REST por recurso, DTOs del contrato y `ManejadorErrores` |
-| `infraestructura/adaptadores/salida/memoria` | Infraestructura | Repositorios y unidad de trabajo en memoria + datos semilla (temporal) |
-| `infraestructura/adaptadores/salida/persistencia` | Infraestructura | Adaptadores de PostgreSQL (pendientes, no son beans) |
-| `infraestructura/configuracion` | Infraestructura | `BeansConfig` (registro de servicios y `Clock`) y el filtro de la cabecera del gateway |
-
-**Reglas de dependencia** (verificadas por `ArquitecturaTest`):
-
-- El **dominio** no depende de nadie.
-- La **aplicación** depende solo del dominio.
-- La **infraestructura** depende de las dos.
-- Dominio y aplicación son Java puro: no importan `org.springframework`, `jakarta.*` ni Lombok.
-
-## Flujo de una petición
-
-Ejemplo: `POST /billeteras/{usuarioId}/movimientos` (débito de un viaje).
-
-```
-Gateway ──(X-Gateway-Secret)──▶ FiltroCabeceraGateway          401 si la cabecera falta o no coincide
-                                   │
-                                   ▼
-                             MovimientoController             @Valid sobre RegistrarMovimientoRequest → 400
-                                   │  DtoMapper: request → RegistrarMovimientoComando
-                                   ▼
-                     RegistrarMovimientoUseCase (puerto entrada)
-                                   │
-                                   ▼
-                       RegistrarMovimientoService             dentro de UnidadDeTrabajo:
-                                   │                          1. ¿referencia ya usada? → mismo movimiento (200) o 409
-                                   │                          2. usuario existe (404) y está activo (409)
-                                   │                          3. billetera bloqueada → recargar / debitar (409 si no alcanza)
-                                   │                          4. guardar billetera + movimiento
-                                   ▼
-          UsuarioRepositorio / BilleteraRepositorio / MovimientoRepositorio (puertos salida)
-                                   │
-                                   ▼
-                    *MemoriaAdapter (hoy)  ·  *PersistenceAdapter (rama BD)
-```
-
-Si se lanza una excepción en cualquier punto, `ManejadorErrores` la traduce a `{codigo, mensaje, detalle}` con su código HTTP.
-
-## Perfil `memoria`
-
-Es el perfil por defecto (`spring.profiles.default=memoria`):
-
-- Excluye la autoconfiguración de DataSource, Hibernate/JPA y repositorios JPA, así que **arranca sin base de datos**.
-- Activa los adaptadores de `salida/memoria`. Los datos se pierden al reiniciar.
-- Al arrancar crea tres usuarios de prueba y escribe sus ids en el log:
-
-| Correo | Estado | Saldo | Recarga inicial |
-|---|---|---|---|
-| `ana@example.com` | activo | 0 | — |
-| `bruno@example.com` | activo | 20000 | `seed-2` |
-| `carla@example.com` | inactivo | 5000 | `seed-3` |
-
-## Variables de entorno
-
-| Variable | Por defecto | Uso |
-|---|---|---|
-| `PORT` | `8080` | Puerto HTTP |
-| `GATEWAY_SECRET` | *(vacío)* | Valor que debe traer la cabecera `X-Gateway-Secret`. **Si está vacío, el filtro no bloquea nada** y se registra un WARN al arrancar. Solo para desarrollo local; en el clúster siempre debe tener valor. |
-
-## Ejecución
-
-```bash
-# Pruebas (dominio, servicios, arquitectura y arranque del contexto)
-./mvnw test
-
-# Arrancar en local (perfil memoria, sin BD, filtro desactivado)
-./mvnw spring-boot:run
-
-# Arrancar exigiendo la cabecera del gateway
-PORT=8080 GATEWAY_SECRET=mi-secreto ./mvnw spring-boot:run
-```
-
-Ejemplo:
-
-```bash
-curl -H "X-Gateway-Secret: mi-secreto" http://localhost:8080/usuarios?estado=activo
-curl http://localhost:8080/health      # /health no requiere la cabecera
+        └── ApiCrudApplicationTests.java    contexto Spring contra PostgreSQL (Testcontainers)
 ```
