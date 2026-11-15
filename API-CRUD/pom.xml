@@ -8,7 +8,7 @@
         <version>4.1.2</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.example</groupId>
+    <groupId>co.edu.uni.rodar</groupId>
     <artifactId>API-CRUD</artifactId>
     <version>0.0.1-SNAPSHOT</version>
     <name>API-CRUD</name>
