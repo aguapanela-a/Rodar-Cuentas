@@ -12,7 +12,7 @@ public class ErrorRespuestaDTO {
 
     public ErrorRespuestaDTO (String codigo, String mensaje, Object detalle){
         this.codigo = codigo;
-        this.detalle = mensaje;
+        this.detalle = detalle;
         this.mensaje = mensaje;
     }
 
