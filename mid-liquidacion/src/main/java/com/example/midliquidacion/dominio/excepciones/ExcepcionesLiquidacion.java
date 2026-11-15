@@ -1,4 +1,4 @@
-package com.example.midliquidacion.infraestructura.excepciones;
+package com.example.midliquidacion.dominio.excepciones;
 
 import lombok.Getter;
 
