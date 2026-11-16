@@ -1,0 +1,4 @@
+spring.application.name=mid-liquidacion
+
+stripe.publishablekey=awawa
+stripie.secretkey=owowo
