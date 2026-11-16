@@ -17,7 +17,7 @@ public class ServicioProducto {
     @Value("${stripie.secretkey}")
     private String apiKey;
 
-    public Product crearProducto( StripeClient miCuentaStripe) throws StripeException {
+    private Product crearProducto( StripeClient miCuentaStripe) throws StripeException {
 
         ProductCreateParams parametrosProducto =
                 ProductCreateParams.builder()
@@ -28,7 +28,9 @@ public class ServicioProducto {
         return miCuentaStripe.v1().products().create(parametrosProducto);
     }
 
-    public Price crearPrecio(Product miProducto, StripeClient miCuentaStripe, BigDecimal valor) throws StripeException {
+    public Price crearPrecio( StripeClient miCuentaStripe, BigDecimal valor) throws StripeException {
+
+        Product miProducto = crearProducto(miCuentaStripe);
 
         PriceCreateParams parametrosPrecio = PriceCreateParams
                 .builder()
