@@ -1,4 +1,10 @@
 spring.application.name=mid-liquidacion
 
+server.port=8081
+
 stripe.publishablekey=awawa
-stripie.secretkey=owowo
+stripe.secretkey=owowo
+stripe.webhook.secret=whsec_1234567890
+
+stripe.checkout.success-url=
+stripe.checkout.cancel-url=

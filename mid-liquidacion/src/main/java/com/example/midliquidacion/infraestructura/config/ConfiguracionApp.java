@@ -1,6 +1,8 @@
 package com.example.midliquidacion.infraestructura.config;
 
+import com.example.midliquidacion.aplicacion.casosUso.CrearMovimientoImpl;
 import com.example.midliquidacion.aplicacion.casosUso.RecargarSaldoImpl;
+import com.example.midliquidacion.aplicacion.puertos.puertos_entrada.CrearMovimientoIn;
 import com.example.midliquidacion.aplicacion.puertos.puertos_entrada.RecargarSaldoIn;
 import com.example.midliquidacion.aplicacion.puertos.puertos_salida.CrearMovimientoOut;
 import com.example.midliquidacion.aplicacion.puertos.puertos_salida.PasarelaPagosOut;
@@ -25,6 +27,10 @@ public class ConfiguracionApp {
         return new UsuariosCrudOutImpl();
     }
 
+    @Bean
+    public CrearMovimientoIn crearMovimientoIn() {
+        return new CrearMovimientoImpl();
+    }
 
     @Bean
     public CrearMovimientoOut crearMovimientoOut() {

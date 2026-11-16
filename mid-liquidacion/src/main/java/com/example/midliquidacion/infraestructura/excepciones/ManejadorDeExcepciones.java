@@ -2,6 +2,7 @@ package com.example.midliquidacion.infraestructura.excepciones;
 
 import com.example.midliquidacion.dominio.excepciones.BusinessException;
 import com.example.midliquidacion.dominio.excepciones.ExcepcionesLiquidacion;
+import com.example.midliquidacion.infraestructura.DTOs.ErrorRespuestaDTO;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;

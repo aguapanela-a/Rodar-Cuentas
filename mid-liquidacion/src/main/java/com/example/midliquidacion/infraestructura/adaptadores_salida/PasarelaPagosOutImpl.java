@@ -42,6 +42,7 @@ public class PasarelaPagosOutImpl implements PasarelaPagosOut {
                     .setSuccessUrl(urlExito)
                     .setCancelUrl(urlCancelacion)
                     .putMetadata("usuarioId", usuarioId.toString())
+                    .putMetadata("monto", valor.toString())
                     .addLineItem(SessionCreateParams.LineItem.builder()
                             .setPrice(precio.getId())
                             .setQuantity(1L)
