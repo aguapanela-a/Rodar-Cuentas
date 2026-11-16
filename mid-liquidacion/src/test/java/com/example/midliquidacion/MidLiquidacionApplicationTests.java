@@ -14,7 +14,11 @@ import org.springframework.context.ApplicationContext;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "stripie.secretkey=sk_test_ficticia",
+        "stripe.checkout.success-url=https://example.com/exito",
+        "stripe.checkout.cancel-url=https://example.com/cancelacion"
+})
 class MidLiquidacionApplicationTests {
 
     @Autowired
@@ -33,8 +37,6 @@ class MidLiquidacionApplicationTests {
         assertThrows(UnsupportedOperationException.class, () -> recarga.recargarSaldo(1L, BigDecimal.ONE));
         assertThrows(UnsupportedOperationException.class,
                 () -> contexto.getBean(UsuariosCrudOut.class).obtenerUsuario(1L));
-        assertThrows(UnsupportedOperationException.class,
-                () -> contexto.getBean(PasarelaPagosOut.class).procesarPago(1L, BigDecimal.ONE));
         assertThrows(UnsupportedOperationException.class,
                 () -> contexto.getBean(CrearMovimientoOut.class).guardar(null));
     }

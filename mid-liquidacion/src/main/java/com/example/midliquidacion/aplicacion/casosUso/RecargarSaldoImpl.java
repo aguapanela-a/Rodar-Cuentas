@@ -1,33 +1,28 @@
 package com.example.midliquidacion.aplicacion.casosUso;
 
 import com.example.midliquidacion.aplicacion.puertos.puertos_entrada.RecargarSaldoIn;
-import com.example.midliquidacion.aplicacion.puertos.puertos_salida.CrearMovimientoOut;
 import com.example.midliquidacion.aplicacion.puertos.puertos_salida.PasarelaPagosOut;
 import com.example.midliquidacion.aplicacion.puertos.puertos_salida.UsuariosCrudOut;
 import com.example.midliquidacion.dominio.excepciones.BusinessException;
-import com.example.midliquidacion.dominio.modelos.Movimiento;
 import com.example.midliquidacion.dominio.modelos.ResultadoPago;
 import com.example.midliquidacion.dominio.servicios.VerificarRecarga;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 public class RecargarSaldoImpl implements RecargarSaldoIn {
     private final VerificarRecarga verificarRecarga;
     private final UsuariosCrudOut usuariosCrud;
     private final PasarelaPagosOut pasarelaPagos;
-    private final CrearMovimientoOut crearMovimiento;
-
     public RecargarSaldoImpl(VerificarRecarga verificarRecarga, UsuariosCrudOut usuariosCrud,
-                             PasarelaPagosOut pasarelaPagos, CrearMovimientoOut crearMovimiento) {
+                             PasarelaPagosOut pasarelaPagos) {
         this.verificarRecarga = verificarRecarga;
         this.usuariosCrud = usuariosCrud;
         this.pasarelaPagos = pasarelaPagos;
-        this.crearMovimiento = crearMovimiento;
     }
 
+
+    // finalmente retorna la url de la pasarela de pagos para que el front redirija al usuario
     @Override
-    public Movimiento recargarSaldo(Long usuarioId, BigDecimal valor) {
+    public String recargarSaldo(Long usuarioId, BigDecimal valor) {
         // llama nucleo para que verifique el valor de la recarga
         verificarRecarga.verificar(valor);
 
@@ -37,21 +32,9 @@ public class RecargarSaldoImpl implements RecargarSaldoIn {
 
         // llama a puerto de salida de pagos para procesar el pago
         ResultadoPago resultado = pasarelaPagos.procesarPago(usuarioId, valor);
-        if (!resultado.isExitoso()) {
+        if (resultado == null || !resultado.isExitoso() || resultado.getUrl() == null || resultado.getUrl().isBlank()) {
             throw new BusinessException("pago_rechazado", "La pasarela de pagos rechazó la transacción");
         }
-
-        // crea el movimiento con la clase pura del dominio
-        Movimiento movimiento = Movimiento.builder()
-                .usuarioId(usuarioId)
-                .tipo("recarga")
-                .monto(valor)
-                .referencia(resultado.getReferencia())
-                .creadoEn(LocalDateTime.now(ZoneId.of("America/Bogota")))
-                .build();
-
-        // llama a puerto de salida de movimientos para guardar el movimiento
-        crearMovimiento.guardar(movimiento);
-        return movimiento;
+        return resultado.getUrl();
     }
 }

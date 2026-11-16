@@ -7,7 +7,6 @@ import com.example.midliquidacion.aplicacion.puertos.puertos_salida.PasarelaPago
 import com.example.midliquidacion.aplicacion.puertos.puertos_salida.UsuariosCrudOut;
 import com.example.midliquidacion.dominio.servicios.VerificarRecarga;
 import com.example.midliquidacion.infraestructura.adaptadores_salida.CrearMovimientoOutImpl;
-import com.example.midliquidacion.infraestructura.adaptadores_salida.PasarelaPagosOutImpl;
 import com.example.midliquidacion.infraestructura.adaptadores_salida.UsuariosCrudOutImpl;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -26,10 +25,6 @@ public class ConfiguracionApp {
         return new UsuariosCrudOutImpl();
     }
 
-    @Bean
-    public PasarelaPagosOut pasarelaPagosOut() {
-        return new PasarelaPagosOutImpl();
-    }
 
     @Bean
     public CrearMovimientoOut crearMovimientoOut() {
@@ -38,7 +33,7 @@ public class ConfiguracionApp {
 
     @Bean
     public RecargarSaldoIn recargarSaldoIn(VerificarRecarga verificarRecarga, UsuariosCrudOut usuariosCrud,
-                                          PasarelaPagosOut pasarelaPagos, CrearMovimientoOut crearMovimiento) {
-        return new RecargarSaldoImpl(verificarRecarga, usuariosCrud, pasarelaPagos, crearMovimiento);
+                                          PasarelaPagosOut pasarelaPagos) {
+        return new RecargarSaldoImpl(verificarRecarga, usuariosCrud, pasarelaPagos);
     }
 }

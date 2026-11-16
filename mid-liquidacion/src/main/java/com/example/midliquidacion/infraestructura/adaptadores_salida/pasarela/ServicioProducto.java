@@ -6,16 +6,12 @@ import com.stripe.model.Price;
 import com.stripe.model.Product;
 import com.stripe.param.PriceCreateParams;
 import com.stripe.param.ProductCreateParams;
-import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 
 @Service
 public class ServicioProducto {
-
-    @Value("${stripie.secretkey}")
-    private String apiKey;
 
     private Product crearProducto( StripeClient miCuentaStripe) throws StripeException {
 
@@ -30,13 +26,23 @@ public class ServicioProducto {
 
     public Price crearPrecio( StripeClient miCuentaStripe, BigDecimal valor) throws StripeException {
 
+        if (valor == null || valor.signum() <= 0) {
+            throw new IllegalArgumentException("El importe debe ser positivo y entero en pesos COP");
+        }
+        long unidadesMenores;
+        try {
+            valor.toBigIntegerExact();
+            unidadesMenores = valor.movePointRight(2).longValueExact();
+        } catch (ArithmeticException e) {
+            throw new IllegalArgumentException("El importe debe ser entero y estar dentro del rango permitido", e);
+        }
         Product miProducto = crearProducto(miCuentaStripe);
 
         PriceCreateParams parametrosPrecio = PriceCreateParams
                 .builder()
                 .setProduct(miProducto.getId())
                 .setCurrency("COP")
-                .setUnitAmount(valor.longValue())
+                .setUnitAmount(unidadesMenores)
                 .build();
 
         return miCuentaStripe.v1().prices().create(parametrosPrecio);
