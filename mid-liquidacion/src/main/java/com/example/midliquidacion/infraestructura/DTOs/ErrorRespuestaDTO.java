@@ -1,4 +1,4 @@
-package com.example.midliquidacion.infraestructura.excepciones;
+package com.example.midliquidacion.infraestructura.DTOs;
 
 import lombok.Getter;
 import lombok.Setter;
