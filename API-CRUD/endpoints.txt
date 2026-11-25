@@ -1,0 +1,261 @@
+API CRUD - Cuentas (Rodar)
+==========================
+
+Notas generales:
+- Base local: http://localhost:8080   |   Gateway: https://{gateway}/cuentas
+- {id} y {usuarioId} son la CÉDULA del usuario.
+- Montos en COP (enteros, sin decimales). Fechas ISO 8601 en UTC.
+- Enums se responden en minúsculas (activo/inactivo, recarga/debito); en la entrada se aceptan mayúsculas o minúsculas.
+- No se admiten campos extra en el JSON de entrada (400).
+- Todos los errores tienen el formato:
+  {
+    "codigo": "solicitud_invalida",
+    "mensaje": "El primer apellido es obligatorio",
+    "detalle": { "campo": "primerApellido" }
+  }
+
+
+------------------------------------------------------------
+1. Verificar salud del servicio
+------------------------------------------------------------
+Endpoint -> GET - /health
+Input: (ninguno)
+Output (200):
+{
+  "estado": "ok",
+  "servicio": "cuentas-crud"
+}
+
+
+------------------------------------------------------------
+2. Crear usuario (crea también su billetera con saldo 0)
+------------------------------------------------------------
+Endpoint -> POST - /usuarios
+Input:
+{
+  "cedula": "1032456789",          // obligatorio, solo dígitos (máx 20)
+  "primerNombre": "Nicolas",       // obligatorio, máx 50
+  "segundoNombre": "Andres",       // opcional, máx 50
+  "primerApellido": "Castro",      // obligatorio, máx 50
+  "segundoApellido": "Rojas",      // opcional, máx 50
+  "correo": "nicolas@example.com"  // obligatorio, único
+}
+Output (201) + header Location: /usuarios/1032456789
+{
+  "cedula": "1032456789",
+  "nombreCompleto": "Nicolas Andres Castro Rojas",
+  "correo": "nicolas@example.com",
+  "estado": "activo"
+}
+Errores: 400 solicitud_invalida | 409 cedula_duplicada | 409 correo_duplicado
+
+
+------------------------------------------------------------
+3. Listar usuarios (filtros opcionales por estado y correo, paginado)
+------------------------------------------------------------
+Endpoint -> GET - /usuarios?estado=activo&correo=nicolas@example.com&pagina=1&tamano=20
+Query params (todos opcionales):
+  estado  -> activo | inactivo
+  correo  -> filtro exacto (sin distinguir mayúsculas)
+  pagina  -> desde 1 (default 1)
+  tamano  -> 1 a 100 (default 20)
+Input: (ninguno)
+Output (200):
+{
+  "pagina": 1,
+  "tamano": 20,
+  "total": 1,
+  "datos": [
+    {
+      "cedula": "1032456789",
+      "nombreCompleto": "Nicolas Castro",
+      "correo": "nicolas@example.com",
+      "estado": "activo"
+    }
+  ]
+}
+Errores: 400 solicitud_invalida
+
+
+------------------------------------------------------------
+4. Consultar usuario por cédula
+------------------------------------------------------------
+Endpoint -> GET - /usuarios/{id}
+Input: (ninguno)
+Output (200):
+{
+  "cedula": "1032456789",
+  "nombreCompleto": "Nicolas Castro",
+  "correo": "nicolas@example.com",
+  "estado": "activo"
+}
+Errores: 404 usuario_no_encontrado
+
+
+------------------------------------------------------------
+5. Actualizar usuario (nombres, apellidos y correo)
+------------------------------------------------------------
+Endpoint -> PUT - /usuarios/{id}
+Input:
+{
+  "primerNombre": "Nicolas",       // obligatorio
+  "segundoNombre": "Andres",       // opcional (si no se envía queda vacío)
+  "primerApellido": "Castro",      // obligatorio
+  "segundoApellido": "Rojas",      // opcional (si no se envía queda vacío)
+  "correo": "nuevo@example.com"    // obligatorio
+}
+Output (200):
+{
+  "cedula": "1032456789",
+  "nombreCompleto": "Nicolas Andres Castro Rojas",
+  "correo": "nuevo@example.com",
+  "estado": "activo"
+}
+Errores: 400 solicitud_invalida | 404 usuario_no_encontrado | 409 correo_duplicado
+
+
+------------------------------------------------------------
+6. Desactivar usuario (borrado lógico)
+------------------------------------------------------------
+Endpoint -> DELETE - /usuarios/{id}
+Input: (ninguno)
+Output (204): (sin cuerpo)
+Errores: 404 usuario_no_encontrado
+
+
+------------------------------------------------------------
+7. Cambiar estado del usuario (activar / desactivar)
+------------------------------------------------------------
+Endpoint -> PATCH - /usuarios/{id}
+Input:
+{
+  "estado": "inactivo"             // activo | inactivo
+}
+Output (200):
+{
+  "estado": "inactivo"
+}
+Errores: 400 solicitud_invalida | 404 usuario_no_encontrado
+
+
+------------------------------------------------------------
+8. Consultar saldo de la billetera por cédula
+------------------------------------------------------------
+Endpoint -> GET - /usuarios/{id}/billetera
+Input: (ninguno)
+Output (200):
+{
+  "cedula": "1032456789",
+  "saldo": 15000,
+  "moneda": "COP"
+}
+Errores: 404 usuario_no_encontrado
+
+
+------------------------------------------------------------
+9. Registrar movimiento (recarga o débito, idempotente por referencia)
+------------------------------------------------------------
+Endpoint -> POST - /usuarios/{usuarioId}/movimientos
+Input:
+{
+  "tipo": "debito",                // obligatorio: recarga | debito
+  "monto": 6240,                   // obligatorio, mayor que 0
+  "referencia": "via-0042",        // obligatorio, única, máx 100
+  "descripcion": "Viaje 42"        // opcional, máx 255 (se acepta pero NO se guarda)
+}
+Output (201 si es nuevo / 200 si ya existía con la misma referencia y mismos datos):
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "cedula": "1032456789",
+  "tipo": "debito",
+  "monto": 6240,
+  "referencia": "via-0042",
+  "creadoEn": "2026-11-24T15:30:00Z"
+}
+Errores: 400 solicitud_invalida | 404 usuario_no_encontrado
+         409 usuario_inactivo | 409 saldo_insuficiente | 409 referencia_en_conflicto
+
+
+------------------------------------------------------------
+10. Consultar historial de movimientos por cédula (filtro opcional por tipo, paginado)
+------------------------------------------------------------
+Endpoint -> GET - /usuarios/{usuarioId}/movimientos?tipo=recarga&pagina=1&tamano=20
+Query params (todos opcionales):
+  tipo    -> recarga | debito
+  pagina  -> desde 1 (default 1)
+  tamano  -> 1 a 100 (default 20)
+Input: (ninguno)
+Output (200) - más reciente primero:
+{
+  "cedula": "1032456789",
+  "pagina": 1,
+  "tamano": 20,
+  "total": 2,
+  "datos": [
+    {
+      "monto": 6240,
+      "tipo": "debito",
+      "referencia": "via-0042",
+      "creadoEn": "2026-11-24T15:30:00Z"
+    },
+    {
+      "monto": 20000,
+      "tipo": "recarga",
+      "referencia": "recarga-7f3c1a",
+      "creadoEn": "2026-11-24T14:00:00Z"
+    }
+  ]
+}
+Errores: 400 solicitud_invalida | 404 usuario_no_encontrado
+
+
+------------------------------------------------------------
+11. Crear liquidación (queda en estado pendiente)
+------------------------------------------------------------
+Endpoint -> POST - /usuarios/{usuarioId}/liquidaciones
+Input: (ninguno, sin cuerpo)
+Output (201):
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "cedula": "1032456789",
+  "estado": "pendiente"
+}
+Errores: 404 usuario_no_encontrado | 409 usuario_inactivo
+
+
+------------------------------------------------------------
+12. Consultar liquidaciones por cédula del usuario
+------------------------------------------------------------
+Endpoint -> GET - /usuarios/{usuarioId}/liquidaciones
+Input: (ninguno)
+Output (200) - lista vacía [] si no tiene liquidaciones:
+[
+  {
+    "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+    "cedula": "1032456789",
+    "estado": "pendiente"
+  },
+  {
+    "id": "9b2e4c1d-0a7f-4e3b-8c5d-1f2a3b4c5d6e",
+    "cedula": "1032456789",
+    "estado": "realizada"
+  }
+]
+Errores: 404 usuario_no_encontrado
+
+
+------------------------------------------------------------
+13. Actualizar estado de la liquidación (pendiente / realizada)
+------------------------------------------------------------
+Endpoint -> PATCH - /liquidaciones/{liquidacionId}
+Input:
+{
+  "estado": "realizada"            // pendiente | realizada
+}
+Output (200):
+{
+  "id": "3fa85f64-5717-4562-b3fc-2c963f66afa6",
+  "cedula": "1032456789",
+  "estado": "realizada"
+}
+Errores: 400 solicitud_invalida (estado desconocido o id que no es UUID) | 404 liquidacion_no_encontrada
