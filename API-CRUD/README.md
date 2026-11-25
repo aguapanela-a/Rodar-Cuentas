@@ -1,9 +1,9 @@
 # API-CRUD (cuentas-crud)
 
 Microservicio del grupo **Cuentas** de la plataforma **Rodar** (scooters y bicicletas compartidas).
-Administra usuarios, billeteras y movimientos (recargas y débitos idempotentes).
+Administra usuarios, billeteras, movimientos (recargas y débitos idempotentes) y liquidaciones.
 
-- **Tecnología:** Java 21 + Spring Boot 4 (Maven), PostgreSQL 16, Flyway
+- **Tecnología:** Java 21 + Spring Boot 4 (Maven), PostgreSQL 16
 - **Contrato:** `cuentas-crud.openapi.yaml`. Las rutas, los códigos HTTP, los nombres de campos y el formato de error siguen ese contrato.
 - **Moneda:** COP, montos enteros (`long`). **Fechas:** `OffsetDateTime` en UTC (ISO 8601).
 
@@ -16,6 +16,7 @@ Administra usuarios, billeteras y movimientos (recargas y débitos idempotentes)
 | `usuarios` | `cedula` (texto, la elige el usuario) | `primer_nombre`, `segundo_nombre`, `primer_apellido`, `segundo_apellido`, `correo`, `estado` | Correo único (guardado en minúsculas). Segundo nombre y segundo apellido opcionales. `estado` = `ACTIVO`/`INACTIVO` (borrado lógico) |
 | `billeteras` | `billetera_id` (UUID autogenerado) | `usuario_id` → `usuarios.cedula`, `saldo` | 1 a 1: `usuario_id` único |
 | `movimientos` | `movimiento_id` (UUID autogenerado) | `usuario_id` → `usuarios.cedula`, `tipo`, `monto`, `referencia`, `creado_en` | N a 1 con usuario. `tipo` = `RECARGA`/`DEBITO`. `referencia` única |
+| `liquidaciones` | `liquidacion_id` (UUID autogenerado) | `usuario_id` → `usuarios.cedula`, `estado` | N a 1 con usuario. `estado` = `PENDIENTE`/`REALIZADA` |
 
 ## Inicio rápido
 
@@ -40,7 +41,7 @@ docker compose up -d
 |---|---|
 | `docker compose up -d` | Crea y arranca el contenedor `cuentas-postgres` con la base, usuario y clave de `.env` |
 | `docker compose down` | Lo detiene; **los datos se conservan** en el volumen `cuentas-datos` |
-| `docker compose down -v` | Lo detiene y **borra los datos**. Al volver a arrancar, Flyway recrea todo desde cero |
+| `docker compose down -v` | Lo detiene y **borra los datos**. Al volver a arrancar, `schema.sql` y `data.sql` recrean todo desde cero |
 
 **Si el puerto 5432 ya está ocupado** (otro PostgreSQL local u otro contenedor), use otro puerto del host y apunte la URL a él:
 
@@ -49,11 +50,12 @@ POSTGRES_PORT=5434 docker compose up -d
 SPRING_DATASOURCE_URL=jdbc:postgresql://localhost:5434/rodar_cuentas ./mvnw spring-boot:run
 ```
 
-**Migraciones** (`src/main/resources/db/migration`):
+**Scripts de la BD** (`src/main/resources`), Spring los ejecuta en cada arranque (`spring.sql.init.mode=always`):
 
-- `V1__crear_tablas.sql`: tablas `usuarios`, `billeteras` y `movimientos`, con sus restricciones e índices.
-- `V2__datos_semilla.sql`: los 10 usuarios de la tabla de abajo.
-- **Nunca edite una migración ya aplicada** (Flyway detecta el cambio por checksum y la app no arranca). Los cambios futuros van en `V3__...sql`, `V4__...sql`, etc.
+- `schema.sql`: tablas `usuarios`, `billeteras`, `movimientos` y `liquidaciones`, con sus restricciones e índices. Usa `CREATE TABLE IF NOT EXISTS`, así que no borra datos.
+- `data.sql`: los 10 usuarios semilla de la tabla de abajo. Usa `ON CONFLICT DO NOTHING`, así que no duplica filas.
+- `IF NOT EXISTS` **no modifica tablas que ya existen**: si cambia una columna, aplique el `ALTER TABLE` a mano (o en local, `docker compose down -v` para empezar de cero).
+- También se pueden ejecutar a mano: `psql -d rodar_cuentas -f src/main/resources/schema.sql`.
 
 ## Variables de entorno
 
@@ -82,11 +84,11 @@ GATEWAY_SECRET=<el mismo secreto configurado en el gateway>
 
 - `?sslmode=require` es obligatorio: Azure rechaza conexiones sin TLS.
 - El servidor es compartido entre grupos, así que mantenga `DB_POOL_MAX` bajo (5 por defecto). Con *N* instancias del servicio, el total de conexiones es *N × DB_POOL_MAX*.
-- Flyway aplica las migraciones pendientes al arrancar. La base `rodar_cuentas` debe existir y el usuario necesita permiso para crear tablas.
+- `schema.sql` crea las tablas que falten al arrancar. La base `rodar_cuentas` debe existir y el usuario necesita permiso para crear tablas.
 
 ## Usuarios semilla (para el grupo Viajes y zonas)
 
-Los crea la migración `V2`. Cédulas fijas, iguales en todos los entornos. El saldo mínimo para iniciar un viaje es 5000 COP.
+Los crea `data.sql`. Cédulas fijas, iguales en todos los entornos. El saldo mínimo para iniciar un viaje es 5000 COP.
 
 | Cédula | Nombre completo | Saldo (COP) | Estado | ¿Puede iniciar viaje? |
 |---|---|---:|---|---|
@@ -116,12 +118,12 @@ API-CRUD/
     │   │   ├── common/         GlobalExceptionHandler, RecursoNoEncontradoException (vacías)
     │   │   ├── usuarios/       controllers/ services/ repositories/ models/ dto/
     │   │   ├── billeteras/     controllers/ services/ repositories/ models/ dto/
-    │   │   └── movimientos/    controllers/ services/ repositories/ models/ dto/
+    │   │   ├── movimientos/    controllers/ services/ repositories/ models/ dto/
+    │   │   └── liquidaciones/  controllers/ services/ repositories/ models/ dto/
     │   └── resources/
     │       ├── application.properties
-    │       └── db/migration/
-    │           ├── V1__crear_tablas.sql
-    │           └── V2__datos_semilla.sql
+    │       ├── schema.sql      creación de tablas
+    │       └── data.sql        datos semilla
     └── test/java/co/edu/uni/rodar/cuentas/
         └── ApiCrudApplicationTests.java    contexto Spring contra PostgreSQL (Testcontainers)
 ```

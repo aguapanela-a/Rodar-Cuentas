@@ -1,13 +1,13 @@
 openapi: 3.0.3
 info:
-  title: Cuentas - API CRUD de usuarios, billeteras y movimientos
+  title: Cuentas - API CRUD de usuarios, billeteras, movimientos y liquidaciones
   version: 2.0.0
   license:
     name: Uso académico - Electiva de Desarrollo Web Backend
     url: https://example.com/licencia
   description: |
     API CRUD del grupo **Cuentas** del clúster **Rodar**. Administra usuarios, su billetera
-    y los movimientos de la billetera (recargas y débitos).
+    los movimientos de la billetera (recargas y débitos) y las liquidaciones del usuario.
 
     **Identificador del usuario:** la **cédula**. La elige el usuario al registrarse, no se
     autogenera y no se puede cambiar.
@@ -43,6 +43,8 @@ tags:
     description: Consulta del saldo
   - name: Movimientos
     description: Recargas y débitos idempotentes
+  - name: Liquidaciones
+    description: Liquidaciones del usuario (pendiente o realizada)
   - name: Salud
     description: Verificación de salud para la prueba de humo
 security:
@@ -398,6 +400,110 @@ paths:
                     detalle:
                       referencia: via-0042
 
+  /usuarios/{usuarioId}/liquidaciones:
+    parameters:
+      - $ref: '#/components/parameters/CedulaMovimientos'
+    post:
+      tags: [Liquidaciones]
+      operationId: crearLiquidacion
+      summary: Crea una liquidación en estado `pendiente` para el usuario
+      description: |
+        No lleva cuerpo. El usuario debe existir (404) y estar activo (409 `usuario_inactivo`).
+      security:
+        - gatewayOAuth: ['billetera:escribir']
+      responses:
+        '201':
+          description: Liquidación creada
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liquidacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+        '409':
+          description: El usuario está desactivado (`usuario_inactivo`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+    get:
+      tags: [Liquidaciones]
+      operationId: listarLiquidaciones
+      summary: Liquidaciones del usuario
+      description: |
+        Funciona aunque el usuario esté inactivo. Si no tiene liquidaciones responde una lista vacía.
+        El orden de la lista no está garantizado.
+      security:
+        - gatewayOAuth: ['usuarios:leer']
+      responses:
+        '200':
+          description: Liquidaciones del usuario
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Liquidacion'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          $ref: '#/components/responses/UsuarioNoEncontrado'
+
+  /liquidaciones/{liquidacionId}:
+    parameters:
+      - name: liquidacionId
+        in: path
+        required: true
+        description: Id de la liquidación
+        schema:
+          type: string
+          format: uuid
+    patch:
+      tags: [Liquidaciones]
+      operationId: cambiarEstadoLiquidacion
+      summary: Cambia el estado de la liquidación (pendiente o realizada)
+      description: Si la liquidación ya tiene ese estado responde 200 sin cambios.
+      security:
+        - gatewayOAuth: ['billetera:escribir']
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CambioEstadoLiquidacion'
+            example:
+              estado: realizada
+      responses:
+        '200':
+          description: Liquidación con el estado resultante
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Liquidacion'
+        '400':
+          $ref: '#/components/responses/SolicitudInvalida'
+        '401':
+          $ref: '#/components/responses/NoAutenticado'
+        '403':
+          $ref: '#/components/responses/SinPermiso'
+        '404':
+          description: No existe una liquidación con ese id (`liquidacion_no_encontrada`)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              example:
+                codigo: liquidacion_no_encontrada
+                mensaje: No existe una liquidación con ese id
+                detalle:
+                  id: 3fa85f64-5717-4562-b3fc-2c963f66afa6
+
 components:
   securitySchemes:
     gatewayOAuth:
@@ -409,9 +515,9 @@ components:
         clientCredentials:
           tokenUrl: https://rodar-gateway.example.com/token
           scopes:
-            usuarios:leer: Consultar usuarios, saldo y movimientos
+            usuarios:leer: Consultar usuarios, saldo, movimientos y liquidaciones
             usuarios:escribir: Crear, actualizar, activar y desactivar usuarios
-            billetera:escribir: Registrar recargas y débitos
+            billetera:escribir: Registrar recargas y débitos; crear liquidaciones y cambiar su estado
 
   parameters:
     Cedula:
@@ -488,6 +594,7 @@ components:
       required: [codigo, mensaje, detalle]
       description: |
         Códigos posibles: `solicitud_invalida` (400), `usuario_no_encontrado` (404),
+        `liquidacion_no_encontrada` (404),
         `recurso_no_encontrado` (404, ruta inexistente), `metodo_no_permitido` (405),
         `tipo_contenido_no_soportado` (415), `cedula_duplicada`, `correo_duplicado`,
         `usuario_inactivo`, `saldo_insuficiente`, `referencia_en_conflicto`,
@@ -681,6 +788,32 @@ components:
         creadoEn:
           type: string
           format: date-time
+
+    EstadoLiquidacion:
+      type: string
+      enum: [pendiente, realizada]
+
+    CambioEstadoLiquidacion:
+      type: object
+      required: [estado]
+      additionalProperties: false
+      properties:
+        estado:
+          $ref: '#/components/schemas/EstadoLiquidacion'
+
+    Liquidacion:
+      type: object
+      required: [id, cedula, estado]
+      properties:
+        id:
+          type: string
+          format: uuid
+        cedula:
+          type: string
+          description: Cédula del usuario dueño de la liquidación
+          example: '1032456789'
+        estado:
+          $ref: '#/components/schemas/EstadoLiquidacion'
 
     MetaPaginacion:
       type: object
