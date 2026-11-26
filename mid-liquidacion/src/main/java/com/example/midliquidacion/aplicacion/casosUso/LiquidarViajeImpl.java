@@ -1,13 +1,16 @@
 package com.example.midliquidacion.aplicacion.casosUso;
 
 import com.example.midliquidacion.aplicacion.puertos.puertos_entrada.LiquidarViajeIn;
+import com.example.midliquidacion.aplicacion.puertos.puertos_salida.ConsultaViajeZonaOut;
 import com.example.midliquidacion.dominio.modelos.LiquidacionResponse;
 
 
 //Orquestador Principal de Liquidaciones
 
 public class LiquidarViajeImpl implements LiquidarViajeIn {
-    public LiquidarViajeImpl() {
+    
+    public LiquidarViajeImpl(ConsultaViajeZonaOut consultaViajeZonaOut) {
+        this.consultaViajeZonaOut = consultaViajeZonaOut;
     }
 
 
